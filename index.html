@@ -119,6 +119,18 @@
 		HTML5 canvas appears to be unsupported in the current browser.<br />
 		Please try updating or use a different browser.
 	</canvas>
+	<!-- iPadOS 블루투스 키보드 인식을 위한 숨겨진 인풋창 -->
+	<input type="text" id="ios-keyboard-fix" style="
+    	position: fixed;
+    	top: -100px;
+    	left: -100px;
+    	width: 1px;
+    	height: 1px;
+    	opacity: 0;
+    	pointer-events: none;
+    	z-index: -9999;"
+	tabindex="-1">
+
 	<div id='status'>
 		<div id='status-progress' style='display: none;' oncontextmenu='event.preventDefault();'><div id ='status-progress-inner'></div></div>
 		<div id='status-indeterminate' style='display: none;' oncontextmenu='event.preventDefault();'>
@@ -241,6 +253,52 @@
 			}
 		})();
 	//]]></script>
+	<script>
+		document.addEventListener("DOMContentLoaded", () => {
+		    const canvas = document.getElementById("canvas"); // Godot의 canvas ID에 맞게 확인해주세요.
+		    const inputFix = document.getElementById("ios-keyboard-fix");
+		
+		    if (!canvas || !inputFix) return;
+		
+		    // 1. 유저가 게임 화면(Canvas)을 터치/클릭하면 가짜 입력창으로 포커스를 강제 이동시킵니다.
+		    canvas.addEventListener("click", () => {
+		        inputFix.focus();
+		    });
+		    canvas.addEventListener("touchstart", () => {
+		        inputFix.focus();
+		    });
+		
+		    // 2. 가짜 입력창에 들어오는 블루투스 키보드 이벤트를 가로채서 Canvas(Godot 엔진)로 토스합니다.
+		    const relayEvent = (e) => {
+		        // 무한 루프 방지: 이벤트가 inputFix에서 발생한 경우에만 복사하여 canvas에 전달합니다.
+		        if (e.target === inputFix) {
+		            const platformEvent = new KeyboardEvent(e.type, {
+		                key: e.key,
+		                code: e.code,
+		                bubbles: true,
+		                cancelable: true,
+		                keyCode: e.keyCode,
+		                which: e.which,
+		                ctrlKey: e.ctrlKey,
+		                shiftKey: e.shiftKey,
+		                altKey: e.altKey,
+		                metaKey: e.metaKey,
+		                repeat: e.repeat
+		            });
+		            canvas.dispatchEvent(platformEvent);
+		        }
+		    };
+		
+		    // 키가 눌릴 때, 뗄 때 모두 이벤트를 릴레이합니다.
+		    inputFix.addEventListener("keydown", relayEvent);
+		    inputFix.addEventListener("keyup", relayEvent);
+		    
+		    // 입력창에 글자가 쌓여서 오작동하는 것을 방지하기 위해 주기적으로 비워줍니다.
+		    inputFix.addEventListener("input", () => {
+		        inputFix.value = "";
+		    });
+		});
+	</script>
 </body>
 </html>
 
