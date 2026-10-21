@@ -263,151 +263,112 @@
 	//]]></script>
 	<script>
 		document.addEventListener("DOMContentLoaded", () => {
-		    const canvas = document.getElementById("canvas"); // Godot의 canvas ID에 맞게 확인해주세요.
-		    const inputFix = document.getElementById("ios-keyboard-fix");
+		    const canvas = document.getElementById("canvas"); // 고도 캔버스 ID 확인
+		    if (!canvas) return;
 		
-		    if (!canvas || !inputFix) return;
+		    let touchStartTimer = null;
+		    let isLongPress = false;
+		    let isDragging = false;
+		    let startX = 0;
+		    let startY = 0;
 		
-		    // 1. 유저가 게임 화면(Canvas)을 터치/클릭하면 가짜 입력창으로 포커스를 강제 이동시킵니다.
-		    canvas.addEventListener("click", () => {
-		        inputFix.focus();
-		    });
-		    canvas.addEventListener("touchstart", () => {
-		        inputFix.focus();
-		    });
+		    // [핵심 함수] 마우스 이벤트를 복사해서 던지는 함수
+		    function relayMouseEvent(type, touch, buttonCode) {
+		        const rect = canvas.getBoundingClientRect();
+		        
+		        // 고도 엔진이 필요로 하는 내부 상대 좌표 정확히 계산
+		        const clientX = touch.clientX;
+		        const clientY = touch.clientY;
+		        const screenX = touch.screenX;
+		        const screenY = touch.screenY;
 		
-		    // 2. 가짜 입력창에 들어오는 블루투스 키보드 이벤트를 가로채서 Canvas(Godot 엔진)로 토스합니다.
-		    const relayEvent = (e) => {
-		        // 무한 루프 방지: 이벤트가 inputFix에서 발생한 경우에만 복사하여 canvas에 전달합니다.
-		        if (e.target === inputFix) {
-		            const platformEvent = new KeyboardEvent(e.type, {
-		                key: e.key,
-		                code: e.code,
-		                bubbles: true,
-		                cancelable: true,
-		                keyCode: e.keyCode,
-		                which: e.which,
-		                ctrlKey: e.ctrlKey,
-		                shiftKey: e.shiftKey,
-		                altKey: e.altKey,
-		                metaKey: e.metaKey,
-		                repeat: e.repeat
-		            });
-		            canvas.dispatchEvent(platformEvent);
+		        const mouseEvent = new MouseEvent(type, {
+		            bubbles: true,
+		            cancelable: true,
+		            view: window,
+		            detail: type === "mousemove" ? 0 : 1,
+		            screenX: screenX,
+		            screenY: screenY,
+		            clientX: clientX,
+		            clientY: clientY,
+		            ctrlKey: false,
+		            altKey: false,
+		            shiftKey: false,
+		            metaKey: false,
+		            button: buttonCode, // 0: 좌클릭, 2: 우클릭
+		            buttons: type === "mousemove" ? (buttonCode === 2 ? 2 : 1) : (type === "mouseup" ? 0 : (buttonCode === 2 ? 2 : 1)),
+		            relatedTarget: null
+		        });
+		        
+		        // ⭐️ 핵심: 고도 엔진 특성상 mousedown은 canvas에, 
+		        // mousemove(드래그)와 mouseup은 window 객체에 모두 던져주어야 인식합니다.
+		        canvas.dispatchEvent(mouseEvent);
+		        window.dispatchEvent(mouseEvent);
+		    }
+		
+		    // 1. 터치 시작
+		    canvas.addEventListener("touchstart", (e) => {
+		        if (e.touches.length === 1) {
+		            const touch = e.touches[0];
+		            startX = touch.clientX;
+		            startY = touch.clientY;
+		            isLongPress = false;
+		            isDragging = false;
+		
+		            // 터치한 즉시 일단 마우스 왼쪽 클릭 다운 전송 (드래그 시작점 인지용)
+		            relayMouseEvent("mousedown", touch, 0);
+		
+		            // 0.4초 동안 안 움직이고 가만히 누르고 있으면 우클릭 전환
+		            touchStartTimer = setTimeout(() => {
+		                if (!isDragging) {
+		                    isLongPress = true;
+		                    relayMouseEvent("mouseup", touch, 0);    // 왼쪽 클릭 떼기
+		                    relayMouseEvent("mousedown", touch, 2);  // 오른쪽 클릭 누르기
+		                    relayMouseEvent("mouseup", touch, 2);    // 오른쪽 클릭 떼기
+		                    if (navigator.vibrate) navigator.vibrate(40); // 햅틱 피드백
+		                }
+		            }, 400); 
 		        }
-		    };
+		    }, { passive: false });
 		
-		    // 키가 눌릴 때, 뗄 때 모두 이벤트를 릴레이합니다.
-		    inputFix.addEventListener("keydown", relayEvent);
-		    inputFix.addEventListener("keyup", relayEvent);
-		    
-		    // 입력창에 글자가 쌓여서 오작동하는 것을 방지하기 위해 주기적으로 비워줍니다.
-		    inputFix.addEventListener("input", () => {
-		        inputFix.value = "";
-		    });
-		});
-
-		const canvas = document.getElementById("canvas"); // 본인의 canvas ID 확인
-
-		let touchStartTimer = null;
-		let isLongPress = false;
-		let isDragging = false;
-		let startX = 0;
-		let startY = 0;
-		
-		// 1. 터치 시작 (Touch Start)
-		canvas.addEventListener("touchstart", (e) => {
-		    if (e.touches.length === 1) {
-		        const touch = e.touches[0];
-		        startX = touch.clientX;
-		        startY = touch.clientY;
-		        isLongPress = false;
-		        isDragging = false;
-		
-		        // 마우스 왼쪽 버튼 클릭 다운 이벤트 시뮬레이션 (기본 드래그 준비용)
-		        relayMouseEvent("mousedown", touch, 0); 
-		
-		        // 0.5초 동안 누르고 있으면 우클릭(Long Press)으로 판단
-		        touchStartTimer = setTimeout(() => {
-		            if (!isDragging) {
-		                isLongPress = true;
-		                // 기존 왼쪽 마우스 다운 취소 후 우클릭 발동
-		                relayMouseEvent("mouseup", touch, 0);
-		                relayMouseEvent("mousedown", touch, 2); // 2 = 우클릭 버튼 번호
-		                relayMouseEvent("mouseup", touch, 2);
-		                
-		                // 아이패드 자체 햅틱 피드백이나 진동을 주고 싶다면 추가 (선택사항)
-		                if (navigator.vibrate) navigator.vibrate(50);
+		    // 2. 터치 이동 (마우스 드래그 변환)
+		    canvas.addEventListener("touchmove", (e) => {
+		        if (e.touches.length === 1) {
+		            const touch = e.touches[0];
+		            
+		            // 미세한 흔들림은 드래그로 판정하지 않음 (유격 차단)
+		            const moveX = Math.abs(touch.clientX - startX);
+		            const moveY = Math.abs(touch.clientY - startY);
+		            
+		            if (moveX > 3 || moveY > 3) {
+		                isDragging = true;
+		                clearTimeout(touchStartTimer); // 움직이기 시작하면 우클릭 타이머 해제
 		            }
-		        }, 500); // 500ms = 0.5초
-		    }
-		}, { passive: false });
 		
-		// 2. 터치 이동 (Touch Move -> 마우스 드래그로 변환)
-		canvas.addEventListener("touchmove", (e) => {
-		    if (e.touches.length === 1) {
-		        const touch = e.touches[0];
-		        
-		        // 유저가 손가락을 일정 거리 이상 움직였다면 드래그로 판정
-		        const moveX = Math.abs(touch.clientX - startX);
-		        const moveY = Math.abs(touch.clientY - startY);
-		        
-		        if (moveX > 5 || moveY > 5) {
-		            isDragging = true;
-		            clearTimeout(touchStartTimer); // 움직이면 우클릭 타이머 취소
+		            // 우클릭 진행 중이 아닐 때만 마우스 드래그(mousemove) 전송
+		            if (!isLongPress) {
+		                relayMouseEvent("mousemove", touch, 0);
+		            }
+		            
+		            // ⭐️ 중요: 아이패드 자체 웹페이지 바운스 및 스크롤을 막아 드래그 본연의 동작 확보
+		            e.preventDefault(); 
 		        }
+		    }, { passive: false });
 		
-		        // 우클릭 상태가 아닐 때만 일반 마우스 드래그(mousemove) 전달
-		        if (!isLongPress) {
-		            relayMouseEvent("mousemove", touch, 0);
-		        }
+		    // 3. 터치 종료
+		    canvas.addEventListener("touchend", (e) => {
+		        clearTimeout(touchStartTimer);
 		        
-		        // 아이패드 브라우저 화면이 통째로 스크롤되는 현상 방지
-		        e.preventDefault(); 
-		    }
-		}, { passive: false });
-		
-		// 3. 터치 종료 (Touch End)
-		canvas.addEventListener("touchend", (e) => {
-		    clearTimeout(touchStartTimer);
-		    
-		    if (e.changedTouches.length === 1 && !isLongPress) {
-		        const touch = e.changedTouches[0];
-		        relayMouseEvent("mouseup", touch, 0); // 마우스 왼쪽 버튼 떼기
-		    }
-		}, { passive: false });
-		
-		
-		// [공통 함수] 터치 데이터를 마우스 이벤트 객체로 래핑하여 Godot으로 던지는 함수
-		function relayMouseEvent(type, touch, buttonCode) {
-		    const rect = canvas.getBoundingClientRect();
-		    
-		    // Canvas 내의 정확한 상대 좌표 계산
-		    const clientX = touch.clientX;
-		    const clientY = touch.clientY;
-		    const screenX = touch.screenX;
-		    const screenY = touch.screenY;
-		
-		    const mouseEvent = new MouseEvent(type, {
-		        bubbles: true,
-		        cancelable: true,
-		        view: window,
-		        detail: 1,
-		        screenX: screenX,
-		        screenY: screenY,
-		        clientX: clientX,
-		        clientY: clientY,
-		        ctrlKey: false,
-		        altKey: false,
-		        shiftKey: false,
-		        metaKey: false,
-		        button: buttonCode, // 0: 좌클릭, 2: 우클릭
-		        buttons: buttonCode === 0 ? 1 : (buttonCode === 2 ? 2 : 0),
-		        relatedTarget: null
-		    });
-		    
-		    canvas.dispatchEvent(mouseEvent);
-		}
+		        if (e.changedTouches.length === 1) {
+		            const touch = e.changedTouches[0];
+		            if (!isLongPress) {
+		                relayMouseEvent("mouseup", touch, 0); // 마우스 왼쪽 떼기
+		            }
+		        }
+		        isDragging = false;
+		        isLongPress = false;
+		    }, { passive: false });
+		});
 
 	</script>
 </body>
