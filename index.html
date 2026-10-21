@@ -121,6 +121,45 @@
 		}
 	</style>
 
+	<script>
+	(function() {
+	    // ⭐️ iOS/iPadOS WebGL 컨텍스트 null 에러 완벽 방어 코드
+	    const originalGetContext = HTMLCanvasElement.prototype.getContext;
+	    
+	    HTMLCanvasElement.prototype.getContext = function(type, attributes) {
+	        const gl = originalGetContext.apply(this, arguments);
+	        
+	        if (gl && (type === 'webgl' || type === 'webgl2' || type === 'experimental-webgl')) {
+	            // original getContextAttributes를 백업
+	            const originalGetAttributes = gl.getContextAttributes;
+	            
+	            gl.getContextAttributes = function() {
+	                const attrs = originalGetAttributes ? originalGetAttributes.apply(this, arguments) : null;
+	                
+	                // 만약 브라우저가 null을 뱉으면, Godot이 튕기지 않도록 기본 객체를 강제로 반환합니다.
+	                if (!attrs) {
+	                    console.warn("Godot iPadOS Fix: gl.getContextAttributes() returned null. Mocking object to prevent crash.");
+	                    return {
+	                        alpha: true,
+	                        antialias: true, // 에러가 나던 핵심 속성을 강제로 true 설정
+	                        depth: true,
+	                        failIfMajorPerformanceCaveat: false,
+	                        powerPreference: "default",
+	                        premultipliedAlpha: true,
+	                        preserveDrawingBuffer: false,
+	                        stencil: false,
+	                        desynchronized: false
+	                    };
+	                }
+	                return attrs;
+	            };
+	        }
+	        return gl;
+	    };
+	})();
+</script>
+
+
 </head>
 <body>
 	<canvas id='canvas'>
